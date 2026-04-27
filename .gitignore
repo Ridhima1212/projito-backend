@@ -1,0 +1,18 @@
+# Environments
+venv/
+env/
+.venv/
+
+# Environment Variables (CRITICAL)
+.env
+
+# Python Cache (unnecessary junk files)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS generated files
+.DS_Store
+
+# Editor files
+.vscode/
