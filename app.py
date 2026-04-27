@@ -1,10 +1,13 @@
 # backend/app.py
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from evaluator import evaluate_project
 
 app = Flask(__name__)
-CORS(app) # Allows the frontend to communicate with the backend
+
+# Netlify ke liye CORS ko explicitly allow kar diya hai
+CORS(app, resources={r"/*": {"origins": "*"}}) 
 
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
@@ -19,5 +22,7 @@ def evaluate():
     return jsonify(result)
 
 if __name__ == '__main__':
-    print("🚀 AI Evaluator Server running on http://localhost:5000")
-    app.run(debug=True, port=5000)
+    # RENDER FIX: Ye line Render ka dynamic port accept karegi aur '0.0.0.0' se usko public banayegi
+    port = int(os.environ.get("PORT", 5000))
+    print(f"🚀 AI Evaluator Server running on port {port}")
+    app.run(host='0.0.0.0', port=port)
