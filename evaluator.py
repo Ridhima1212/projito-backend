@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 # pyrefly: ignore[missing-import]
 from groq import Groq
 # Load environment variables from .env file
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(env_path)
 load_dotenv()
 
 # Initialize Groq Client

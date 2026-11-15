@@ -1,10 +1,17 @@
 # backend/app.py
 import os
+from dotenv import load_dotenv
+
+# Ensure .env in backend directory is loaded
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(env_path)
+load_dotenv()
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
-from database import init_db, get_db_connection, is_postgres
-from evaluator import evaluate_project
+from database import init_db, get_db_connection, is_postgres, save_evaluation, get_user_evaluations, delete_evaluation
+from evaluator import evaluate_project, extract_repo_info
 from mailer import send_contact_email
 
 app = Flask(__name__)
@@ -17,18 +24,113 @@ except Exception as e:
 
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ----------------- 1. AI EVALUATION -----------------
+# ----------------- 1. AI EVALUATION & HISTORY -----------------
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
     data = request.get_json() or {}
-    github_url = data.get('github_url')
-    description = data.get('description')
+    github_url = (data.get('github_url') or '').strip()
+    description = (data.get('description') or '').strip()
+    user_id = data.get('user_id')
 
     if not github_url or not description:
         return jsonify({"error": "Please provide both a GitHub URL and a description."}), 400
 
     result = evaluate_project(github_url, description)
+    if not isinstance(result, dict) or result.get("error"):
+        return jsonify(result), 400
+
+    # If user is logged in, automatically save to database history
+    if user_id:
+        try:
+            target_uid = None
+            if str(user_id).isdigit():
+                target_uid = int(user_id)
+            elif '@' in str(user_id):
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                param = "%s" if is_postgres() else "?"
+                cursor.execute(f"SELECT id FROM users WHERE email = {param}", (str(user_id).strip().lower(),))
+                user_row = cursor.fetchone()
+                conn.close()
+                if user_row:
+                    target_uid = user_row['id']
+
+            if target_uid:
+                owner, repo = extract_repo_info(github_url)
+                repo_name = f"{owner}/{repo}" if owner and repo else github_url
+                score = int(result.get('score', 0))
+                quality = str(result.get('quality', 'Audited'))
+                saved_id = save_evaluation(target_uid, github_url, repo_name, description, score, quality, result)
+                result['saved_id'] = saved_id
+        except Exception as e:
+            print(f"⚠️ Failed to save evaluation history: {e}")
+
     return jsonify(result)
+
+# ----------------- 1b. GET USER EVALUATION HISTORY -----------------
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    user_id = request.args.get('user_id')
+    email = request.args.get('email')
+
+    if not user_id and not email:
+        return jsonify({"error": "user_id or email is required."}), 400
+
+    try:
+        target_uid = None
+
+        if user_id and str(user_id).isdigit():
+            target_uid = int(user_id)
+        elif email or (user_id and '@' in str(user_id)):
+            target_email = (email or user_id).strip().lower()
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            param = "%s" if is_postgres() else "?"
+            cursor.execute(f"SELECT id FROM users WHERE email = {param}", (target_email,))
+            user_row = cursor.fetchone()
+            conn.close()
+            if user_row:
+                target_uid = user_row['id']
+
+        if target_uid is None:
+            return jsonify({"history": []}), 200
+
+        history = get_user_evaluations(target_uid)
+        return jsonify({"history": history}), 200
+    except Exception as e:
+        return jsonify({"error": f"Database error: {e!s}"}), 500
+
+# ----------------- 1c. SAVE EVALUATION TO HISTORY (MANUAL / POST-LOGIN) -----------------
+@app.route('/api/history/save', methods=['POST'])
+def save_history():
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    github_url = (data.get('github_url') or '').strip()
+    description = (data.get('description') or '').strip()
+    result = data.get('result')
+
+    if not user_id or not github_url or not result:
+        return jsonify({"error": "user_id, github_url, and result are required."}), 400
+
+    try:
+        owner, repo = extract_repo_info(github_url)
+        repo_name = f"{owner}/{repo}" if owner and repo else github_url
+        score = int(result.get('score', 0))
+        quality = str(result.get('quality', 'Audited'))
+        saved_id = save_evaluation(int(user_id), github_url, repo_name, description, score, quality, result)
+        return jsonify({"message": "Evaluation saved to history successfully!", "id": saved_id}), 201
+    except Exception as e:
+        return jsonify({"error": f"Database error: {e!s}"}), 500
+
+# ----------------- 1d. DELETE HISTORY ITEM -----------------
+@app.route('/api/history/<int:eval_id>', methods=['DELETE'])
+def delete_history_item(eval_id):
+    user_id = request.args.get('user_id')
+    try:
+        deleted = delete_evaluation(eval_id, int(user_id) if user_id else None)
+        return jsonify({"message": "History item deleted.", "deleted": deleted}), 200
+    except Exception as e:
+        return jsonify({"error": f"Database error: {e!s}"}), 500
 
 # ----------------- 2. AUTHENTICATION: SIGNUP -----------------
 @app.route('/api/signup', methods=['POST'])
