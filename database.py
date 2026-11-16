@@ -14,8 +14,10 @@ def is_postgres():
 def get_db_connection():
     """Returns a database connection (PostgreSQL if DATABASE_URL configured, otherwise SQLite)."""
     if is_postgres():
-        import psycopg2
-        import psycopg2.extras
+        # pyrefly: ignore[missing-import]
+        import psycopg2  # type: ignore
+        # pyrefly: ignore[missing-import]
+        import psycopg2.extras  # type: ignore
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         return conn
     else:
@@ -122,7 +124,8 @@ def save_evaluation(user_id: int, github_url: str, repo_name: str, description: 
             """,
             (user_id, github_url, repo_name, description, score, quality, result_json)
         )
-        eval_id = cursor.fetchone()['id']
+        row = cursor.fetchone()
+        eval_id = row['id'] if isinstance(row, dict) else (row[0] if row else 0)
     else:
         cursor.execute(
             """
