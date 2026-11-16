@@ -125,7 +125,7 @@ def save_evaluation(user_id: int, github_url: str, repo_name: str, description: 
             (user_id, github_url, repo_name, description, score, quality, result_json)
         )
         row = cursor.fetchone()
-        eval_id = row['id'] if isinstance(row, dict) else (row[0] if row else 0)
+        eval_id: int = int(row['id'] if isinstance(row, dict) else (row[0] if row else 0))
     else:
         cursor.execute(
             """
@@ -134,7 +134,7 @@ def save_evaluation(user_id: int, github_url: str, repo_name: str, description: 
             """,
             (user_id, github_url, repo_name, description, score, quality, result_json)
         )
-        eval_id = cursor.lastrowid
+        eval_id: int = int(cursor.lastrowid or 0)
 
     conn.commit()
     conn.close()
@@ -172,7 +172,7 @@ def get_user_evaluations(user_id: int) -> list:
 
     return evaluations
 
-def delete_evaluation(eval_id: int, user_id: int = None) -> bool:
+def delete_evaluation(eval_id: int, user_id: int | None = None) -> bool:
     """Deletes an evaluation item, optionally verifying user_id ownership."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -189,7 +189,7 @@ def delete_evaluation(eval_id: int, user_id: int = None) -> bool:
             (eval_id,)
         )
 
-    deleted = cursor.rowcount > 0
+    deleted = bool(cursor.rowcount and cursor.rowcount > 0)
     conn.commit()
     conn.close()
     return deleted
