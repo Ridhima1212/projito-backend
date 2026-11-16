@@ -125,7 +125,7 @@ def save_evaluation(user_id: int, github_url: str, repo_name: str, description: 
             (user_id, github_url, repo_name, description, score, quality, result_json)
         )
         row = cursor.fetchone()
-        eval_id: int = int(row['id'] if isinstance(row, dict) else (row[0] if row else 0))
+        eval_id = row['id'] if isinstance(row, dict) else (row[0] if row else 0)
     else:
         cursor.execute(
             """
@@ -134,7 +134,7 @@ def save_evaluation(user_id: int, github_url: str, repo_name: str, description: 
             """,
             (user_id, github_url, repo_name, description, score, quality, result_json)
         )
-        eval_id: int = int(cursor.lastrowid or 0)
+        eval_id = cursor.lastrowid or 0
 
     conn.commit()
     conn.close()
@@ -189,7 +189,7 @@ def delete_evaluation(eval_id: int, user_id: int | None = None) -> bool:
             (eval_id,)
         )
 
-    deleted = bool(cursor.rowcount and cursor.rowcount > 0)
+    deleted = cursor.rowcount > 0
     conn.commit()
     conn.close()
     return deleted
